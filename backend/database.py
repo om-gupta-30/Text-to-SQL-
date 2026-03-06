@@ -192,85 +192,147 @@ def initialize_database():
     conn.close()
 
 
-def execute_query(sql: str) -> List[Dict[str, Any]]:
+DML_KEYWORDS = {"INSERT", "UPDATE", "DELETE", "REPLACE"}
+DDL_KEYWORDS = {"CREATE", "DROP", "ALTER"}
+READ_KEYWORDS = {"SELECT", "WITH", "EXPLAIN"}
+PRAGMA_KEYWORD = "PRAGMA"
+
+
+def _classify_query(sql: str) -> str:
+    """Classify query by its leading keyword."""
+    first = sql.strip().split()[0].upper() if sql.strip() else ""
+    if first in READ_KEYWORDS:
+        return "select"
+    if first in DML_KEYWORDS:
+        return "dml"
+    if first in DDL_KEYWORDS:
+        return "ddl"
+    if first == PRAGMA_KEYWORD:
+        return "pragma"
+    return "other"
+
+
+def execute_sql(sql: str) -> Dict[str, Any]:
     """
-    Execute SQL query and return results
-    Validates that query is SELECT only for safety
+    Execute any valid SQLite statement.
+
+    Supported types:
+      - select  : SELECT, WITH (CTEs), EXPLAIN, EXPLAIN QUERY PLAN
+      - dml     : INSERT, UPDATE, DELETE, REPLACE
+      - ddl     : CREATE, DROP, ALTER
+      - pragma  : PRAGMA (read pragmas return rows; write pragmas return a message)
+
+    Returns a dict with:
+      - query_type: 'select' | 'dml' | 'ddl' | 'pragma' | 'other'
+      - results: list of row dicts (for row-returning statements)
+      - rows_affected: int (DML only, else None)
+      - message: human-readable summary
     """
-    sql_stripped = sql.strip().upper()
-    
-    if not sql_stripped.startswith("SELECT"):
-        raise ValueError("Only SELECT queries are allowed")
-    
-    if any(keyword in sql_stripped for keyword in ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE"]):
-        raise ValueError("Unsafe SQL operation detected")
-    
+    query_type = _classify_query(sql)
+
     conn = get_connection()
+    # Only enforce FK pragma for DML/DDL — not for PRAGMA statements themselves
+    if query_type not in ("pragma",):
+        conn.execute("PRAGMA foreign_keys = ON")
     cursor = conn.cursor()
-    
+
     try:
         cursor.execute(sql)
-        rows = cursor.fetchall()
-        results = [dict(row) for row in rows]
-        return results
-    except sqlite3.Error as e:
-        raise ValueError(f"SQL execution error: {str(e)}")
-    finally:
+
+        # SELECT / WITH / EXPLAIN — all return rows
+        if query_type == "select":
+            rows = cursor.fetchall()
+            results = [dict(row) for row in rows]
+            conn.close()
+            is_explain = sql.strip().upper().startswith("EXPLAIN")
+            return {
+                "query_type": "select",
+                "results": results,
+                "rows_affected": None,
+                "message": f"Query plan: {len(results)} step(s)" if is_explain else f"{len(results)} row(s) returned",
+            }
+
+        # PRAGMA — may or may not return rows
+        if query_type == "pragma":
+            rows = cursor.fetchall()
+            results = [dict(row) for row in rows]
+            conn.close()
+            if results:
+                return {
+                    "query_type": "pragma",
+                    "results": results,
+                    "rows_affected": None,
+                    "message": f"{len(results)} row(s) returned",
+                }
+            return {
+                "query_type": "pragma",
+                "results": [],
+                "rows_affected": None,
+                "message": "PRAGMA executed successfully",
+            }
+
+        # DML — INSERT, UPDATE, DELETE, REPLACE
+        conn.commit()
+        rows_affected = cursor.rowcount if cursor.rowcount >= 0 else 0
+
+        if query_type == "dml":
+            first_word = sql.strip().split()[0].upper()
+            action_map = {
+                "INSERT": "inserted",
+                "UPDATE": "updated",
+                "DELETE": "deleted",
+                "REPLACE": "replaced",
+            }
+            verb = action_map.get(first_word, "affected")
+            conn.close()
+            return {
+                "query_type": "dml",
+                "results": [],
+                "rows_affected": rows_affected,
+                "message": f"{rows_affected} row(s) {verb}",
+            }
+
+        # DDL — CREATE, DROP, ALTER
         conn.close()
+        return {
+            "query_type": "ddl",
+            "results": [],
+            "rows_affected": None,
+            "message": "Statement executed successfully",
+        }
+
+    except sqlite3.Error as e:
+        conn.rollback()
+        conn.close()
+        raise ValueError(f"SQL execution error: {str(e)}")
 
 
 def get_schema_info() -> str:
-    """Get database schema information for LLM context"""
-    schema = """
-Database Schema:
+    """
+    Build live schema info from SQLite's sqlite_master + PRAGMA table_info.
+    Always reflects the current state of the database.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
 
-Table: customers
-Columns:
-  - id: INTEGER (Primary Key)
-  - name: TEXT (Customer full name)
-  - email: TEXT (Unique email address)
-  - phone: TEXT (Phone number)
-  - city: TEXT (City name)
-  - country: TEXT (Country name)
-  - created_at: TIMESTAMP (Account creation date)
+    try:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+        tables = [row["name"] for row in cursor.fetchall()]
 
-Table: products
-Columns:
-  - id: INTEGER (Primary Key)
-  - name: TEXT (Product name)
-  - category: TEXT (Product category: Electronics, Office)
-  - price: REAL (Product price in USD)
-  - stock_quantity: INTEGER (Available stock)
-  - created_at: TIMESTAMP (Product added date)
+        lines = ["Database Schema (SQLite):\n"]
+        for table in tables:
+            lines.append(f"Table: {table}")
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = cursor.fetchall()
+            for col in columns:
+                pk_marker = " (Primary Key)" if col["pk"] else ""
+                not_null = " NOT NULL" if col["notnull"] else ""
+                default = f" DEFAULT {col['dflt_value']}" if col["dflt_value"] is not None else ""
+                lines.append(f"  - {col['name']}: {col['type']}{not_null}{default}{pk_marker}")
+            lines.append("")
 
-Table: orders
-Columns:
-  - id: INTEGER (Primary Key)
-  - customer_id: INTEGER (Foreign Key -> customers.id)
-  - order_date: TIMESTAMP (Order date and time)
-  - total_amount: REAL (Total order amount in USD)
-  - status: TEXT (Order status: pending, processing, shipped, delivered, cancelled)
-
-Table: order_items
-Columns:
-  - id: INTEGER (Primary Key)
-  - order_id: INTEGER (Foreign Key -> orders.id)
-  - product_id: INTEGER (Foreign Key -> products.id)
-  - quantity: INTEGER (Quantity ordered)
-  - unit_price: REAL (Price per unit at time of order)
-  - subtotal: REAL (quantity * unit_price)
-
-Relationships:
-- customers.id <- orders.customer_id (One customer can have many orders)
-- orders.id <- order_items.order_id (One order can have many items)
-- products.id <- order_items.product_id (One product can be in many orders)
-
-Sample query examples:
-- SELECT * FROM customers WHERE country = 'USA';
-- SELECT name, email FROM customers ORDER BY created_at DESC LIMIT 5;
-- SELECT p.name, p.price, p.category FROM products p WHERE p.stock_quantity > 50;
-- SELECT c.name, COUNT(o.id) as order_count FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.id;
-- SELECT p.name, SUM(oi.quantity) as total_sold FROM products p JOIN order_items oi ON p.id = oi.product_id GROUP BY p.id ORDER BY total_sold DESC;
-- SELECT c.name, o.total_amount, o.status FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = 'delivered';
-"""
-    return schema
+        return "\n".join(lines)
+    finally:
+        conn.close()

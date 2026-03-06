@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from models import QueryRequest, QueryResponse, ErrorResponse
-from database import initialize_database, execute_query, get_schema_info
+from database import initialize_database, execute_sql, get_schema_info
 from llm import initialize_llm, generate_sql
 
 
@@ -40,42 +40,29 @@ async def root():
 @app.post("/query", response_model=QueryResponse, responses={400: {"model": ErrorResponse}})
 async def query_database(request: QueryRequest):
     """
-    Convert natural language question to SQL and execute it
-    
-    Flow:
-    1. Receive question
-    2. Call generate_sql(question)
-    3. Execute SQL (only SELECT queries allowed)
-    4. Return results
-    
-    Args:
-        request: QueryRequest containing natural language question
-    
-    Returns:
-        QueryResponse with question, SQL, and results
-    
-    Raises:
-        HTTPException: If SQL generation or execution fails
+    Convert natural language to SQL and execute it.
+    Supports SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER.
     """
     try:
         schema_info = get_schema_info()
-        
         sql = generate_sql(request.question, schema_info)
-        
-        results = execute_query(sql)
-        
+        exec_result = execute_sql(sql)
+
         return QueryResponse(
             question=request.question,
             sql=sql,
-            results=results
+            query_type=exec_result["query_type"],
+            results=exec_result["results"],
+            rows_affected=exec_result["rows_affected"],
+            message=exec_result["message"],
         )
-    
+
     except ValueError as e:
         raise HTTPException(
             status_code=400,
             detail={"error": "Query processing failed", "details": str(e)}
         )
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=500,

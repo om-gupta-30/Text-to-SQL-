@@ -1,27 +1,24 @@
 # Text-to-SQL AI
 
-> Convert natural language questions into SQL queries and execute them in real-time
+> Convert natural language into any SQL operation and execute it in real-time — SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, REPLACE, PRAGMA, and EXPLAIN.
 
 [![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![CI/CD](https://github.com/YOUR_USERNAME/text-to-sql-ai/actions/workflows/ci.yml/badge.svg)
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Clone the repository
 git clone <your-repo-url>
 cd "Text to SQL"
 
-# Set up environment
 cp backend/.env.example backend/.env
-# Edit backend/.env and add your OpenAI API key
+# Add your OpenAI API key to backend/.env
 
-# Run the application
+make install
 make dev
 ```
 
@@ -29,215 +26,211 @@ Open **http://localhost:5173**
 
 ---
 
-## ✨ Features
+## Features
 
-- 🤖 AI-powered natural language to SQL conversion
-- 🗄️ Multi-table database with foreign keys (customers, products, orders)
-- 💡 12 built-in query suggestions
-- 🔒 Secure: Only SELECT queries, SQL injection protection
-- ⚡ Real-time query execution and results
-- 📱 Responsive, modern UI
-- 🔄 Automated CI/CD pipeline
+- AI-powered natural language to SQL conversion (GPT-4o-mini)
+- **Full SQL support** — SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE, ALTER TABLE, REPLACE INTO, PRAGMA, EXPLAIN QUERY PLAN
+- Multi-table SQLite database with foreign keys (customers, products, orders, order_items)
+- Live schema introspection — newly created tables are immediately available to the LLM
+- 12 built-in example queries across all operation types
+- DML results show rows affected; DDL/PRAGMA show execution status
+- Responsive, modern UI with query-type badges and color-coded suggestions
+- Automated CI/CD pipeline with security scanning
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Text to SQL/
 ├── backend/
-│   ├── main.py              # FastAPI app
-│   ├── database.py          # Database operations
-│   ├── llm.py               # OpenAI integration
-│   ├── models.py            # Pydantic models
+│   ├── main.py              # FastAPI app + routes
+│   ├── database.py          # DB init, execute_sql, live schema introspection
+│   ├── llm.py               # OpenAI integration + prompt
+│   ├── models.py            # Pydantic request/response models
 │   ├── requirements.txt     # Python dependencies
-│   └── .env                 # Your API keys (ignored by git)
+│   └── .env.example         # Environment template
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx          # Main UI
-│   │   └── App.css          # Styles
+│   │   ├── App.jsx          # Main UI component
+│   │   ├── App.css          # Styles
+│   │   ├── main.jsx         # React entry point
+│   │   └── index.css        # Base reset
+│   ├── index.html
 │   ├── package.json
 │   └── vite.config.js
 ├── .github/workflows/
 │   └── ci.yml               # CI/CD pipeline
-├── Makefile                 # Quick commands
-├── .gitignore               # Security rules
-└── README.md                # This file
+├── Makefile                  # Dev commands
+├── security-check.sh        # Pre-push security scan
+├── .gitignore
+├── LICENSE
+└── README.md
 ```
 
 ---
 
-## 🛠️ Setup
+## Setup
 
 ### Prerequisites
+
 - Python 3.13+
 - Node.js 18+
 - OpenAI API key
 
 ### Installation
 
-**1. Install Dependencies**
 ```bash
 make install
 ```
 
-**2. Configure Environment**
+### Configure Environment
+
 ```bash
 cp backend/.env.example backend/.env
-# Add your OpenAI API key to backend/.env
 ```
 
-**3. Run Application**
+Add your key to `backend/.env`:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+### Run
+
 ```bash
 make dev
 ```
 
-**4. Access**
-- Frontend: http://localhost:5173
-- Backend API: http://127.0.0.1:8000
-- API Docs: http://127.0.0.1:8000/docs
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://127.0.0.1:8000 |
+| API Docs (Swagger) | http://127.0.0.1:8000/docs |
 
 ---
 
-## 📝 Available Commands
+## Available Commands
 
 | Command | Description |
 |---------|-------------|
-| `make dev` | Run both backend and frontend |
+| `make dev` | Run backend + frontend together |
 | `make install` | Install all dependencies |
 | `make backend` | Run backend only |
 | `make frontend` | Run frontend only |
 | `make stop` | Stop all servers |
-| `make clean` | Clean dependencies and database |
+| `make clean` | Clean deps, cache, and database |
 
 ---
 
-## 💡 Example Queries
+## Supported SQL Operations
 
-**Simple Queries:**
-- "Show all customers from USA"
-- "List all products in Electronics category"
-
-**JOIN Queries:**
-- "What are the top 5 best-selling products?"
-- "Show customers with more than 2 orders"
-
-**Aggregation:**
-- "What is the total revenue from delivered orders?"
-- "What is the average order value?"
+| Type | Keywords | Example Prompt |
+|------|----------|----------------|
+| **SELECT** | `SELECT`, `WITH` | "Show all customers from USA" |
+| **INSERT** | `INSERT` | "Add a customer named Jane from London" |
+| **UPDATE** | `UPDATE` | "Update all pending orders to processing" |
+| **DELETE** | `DELETE` | "Delete all cancelled orders" |
+| **REPLACE** | `REPLACE INTO` | "Upsert a product named Webcam HD at $79.99" |
+| **CREATE** | `CREATE TABLE` | "Create a notes table with id, content, created_at" |
+| **ALTER** | `ALTER TABLE` | "Add a discount_percent column to products" |
+| **DROP** | `DROP TABLE` | "Drop the notes table" |
+| **PRAGMA** | `PRAGMA` | "Show column info for the orders table" |
+| **EXPLAIN** | `EXPLAIN QUERY PLAN` | "Show the query plan for selecting delivered orders" |
 
 ---
 
-## 🗄️ Database Schema
+## Database Schema
 
-**Tables:**
-- **customers** (15 rows) - Customer information
-- **products** (15 rows) - Electronics and Office products
-- **orders** (20 rows) - Customer orders with status
-- **order_items** (34 rows) - Order line items
+The database is auto-created on startup with seed data.
 
-**Relationships:**
+| Table | Rows | Description |
+|-------|------|-------------|
+| `customers` | 15 | Customer profiles |
+| `products` | 15 | Electronics and Office products |
+| `orders` | 20 | Orders with status tracking |
+| `order_items` | 34 | Line items per order |
+
 ```
-customers → orders → order_items ← products
+customers 1───* orders 1───* order_items *───1 products
 ```
+
+Schema is introspected live — any tables you create via natural language are immediately available.
 
 ---
 
-## 🚀 Deployment
+## Deployment
 
 ### Environment Variables
 
-**Required:**
-```bash
-OPENAI_API_KEY=your_openai_api_key_here
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
 
-### Deploy Backend (Railway/Render)
-
-1. Push to GitHub
-2. Connect repository to Railway or Render
-3. Set environment variable: `OPENAI_API_KEY`
-4. Deploy automatically
-
-### Deploy Frontend (Vercel)
+### Backend (Railway / Render / GCP Cloud Run)
 
 1. Push to GitHub
-2. Import project to Vercel
-3. Set root directory: `frontend`
-4. Deploy automatically
+2. Connect repository
+3. Set `OPENAI_API_KEY` as an environment variable in the platform's dashboard
+4. Deploy
+
+### Frontend (Vercel / Netlify)
+
+1. Push to GitHub
+2. Import project, set root directory to `frontend`
+3. Build command: `npm run build`, output: `dist`
+4. Deploy
 
 ---
 
-## 🔒 Security
+## Security
 
-✅ API keys protected (`.env` in `.gitignore`)  
-✅ SQL injection prevention  
-✅ Only SELECT queries allowed  
-✅ No DROP/DELETE/INSERT/UPDATE operations  
-✅ Automated security checks in CI/CD
+- `.env` files are in `.gitignore` — never committed
+- Database files (`*.db`, `*.sqlite`) are gitignored
+- `__pycache__`, `node_modules`, `dist` are all gitignored
+- `security-check.sh` scans for leaked API keys before push
+- CI/CD pipeline runs automated security checks on every push
+- `.env.example` contains only placeholder values
 
-**Before pushing to GitHub:**
+**Before pushing:**
+
 ```bash
 ./security-check.sh
 ```
 
 ---
 
-## 🔄 CI/CD Pipeline
+## CI/CD Pipeline
 
-Automated checks run on every push:
-- 🔒 Security validation
-- 🐍 Backend tests
-- ⚛️ Frontend build
-- 🔗 Integration tests
+Runs on every push and PR to `main` / `develop`:
 
-View results: Actions tab on GitHub
+| Job | What it does |
+|-----|--------------|
+| Security Check | Scans for `.env`, `.db`, API keys in tracked files |
+| Backend Tests | Python syntax, Black formatting, mypy, Bandit security scan |
+| Frontend Tests | ESLint, Vite production build |
+| Integration Check | Required files present, `.env.example` safety, README exists |
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 **Port already in use:**
 ```bash
-make stop
-make dev
+make stop && make dev
 ```
 
 **Database issues:**
 ```bash
-make clean
-make dev
+make clean && make dev
 ```
 
 **API key not working:**
-- Check `backend/.env` exists
-- Verify `OPENAI_API_KEY` is correct
-- Restart backend server
+- Verify `backend/.env` exists and has `OPENAI_API_KEY=sk-...`
+- Restart the backend
 
 ---
 
-## 📄 License
+## License
 
-MIT License - see [LICENSE](LICENSE) file
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `./test-ci.sh` to verify
-5. Submit a pull request
-
----
-
-<div align="center">
-
-**Built with FastAPI, React, and OpenAI**
-
-⭐ Star this repo if you find it helpful!
-
-[Report Bug](../../issues) · [Request Feature](../../issues)
-
-</div>
+MIT — see [LICENSE](LICENSE)
